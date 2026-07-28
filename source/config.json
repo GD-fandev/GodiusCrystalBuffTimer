@@ -1,0 +1,66 @@
+{
+  "process_name": "Godius.exe",
+  "window_title": "Godius Client",
+  "duration_seconds": 600,
+  "start_adjust_seconds": 2,
+  "cancel_key": "0",
+  "allow_timer_visibility_toggle": false,
+  "calibration_toggle_key": "F10",
+  "grow_key": "NUMPAD_ADD",
+  "shrink_key": "NUMPAD_SUBTRACT",
+  "icon_path": "icons/ice_display.png",
+  "program_icon_path": "icons/Godius_104.png",
+  "auto_detect": true,
+  "detect_template_path": "icons/ice_crystal_template.png",
+  "absent_template_path": "icons/ice_absent_template.png",
+  "buffs": [
+    {
+      "key": "ice",
+      "name": "Ice Crystal",
+      "detect_template_path": "icons/ice_crystal_template.png",
+      "display_icon_path": "icons/ice_display.png"
+    },
+    {
+      "key": "fire",
+      "name": "Fire Crystal",
+      "detect_template_path": "icons/fire_crystal_template.png",
+      "display_icon_path": "icons/fire_display.png"
+    }
+  ],
+  "detect_coordinate_origin": "client",
+  "detect_reference_size": [
+    2112,
+    1320
+  ],
+  "detect_region": [
+    1638,
+    1222,
+    1680,
+    1264
+  ],
+  "detect_threshold": 0.7,
+  "absent_threshold": 0.93,
+  "detect_required_hits": 4,
+  "absent_required_hits": 6,
+  "missing_required_hits": 10,
+  "absent_grace_seconds": 5,
+  "expire_restart_suppression_seconds": 1.5,
+  "stop_when_absent_detected": true,
+  "stop_when_icon_missing": true,
+  "detect_interval_ms": 350,
+  "hide_overlay_during_capture": false,
+  "offset_x": 18,
+  "offset_y": 46,
+  "window_width": 150,
+  "window_height": 150,
+  "display_icon_size": 120,
+  "display_icon_opacity": 0.65,
+  "timer_visible": true,
+  "timer_attach_to_client": true,
+  "timer_offset_x": 578,
+  "timer_offset_y": 813,
+  "timer_window_x": 1474,
+  "timer_window_y": 1217,
+  "control_window_x": 87,
+  "control_window_y": 675
+}
