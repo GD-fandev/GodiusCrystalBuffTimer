@@ -2,7 +2,7 @@
 
 ## 日本語
 
-Godius EW 用の Crystal Buff タイマーです。
+Godius EW 用の 結晶バフタイマーです。
 ゲーム画面上の 氷の結晶・炎の結晶 のバフアイコンを検出し、残り時間をオーバーレイで表示します。
 
 ファイルのダウンロード: [リリースページ](https://github.com/GD-fandev/GodiusCrystalBuffTimer/releases/tag/v1.0.0)
