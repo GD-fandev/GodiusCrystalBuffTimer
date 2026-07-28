@@ -5,6 +5,8 @@
 Godius EW 用の Crystal Buff タイマーです。
 ゲーム画面上の 氷の結晶・炎の結晶 のバフアイコンを検出し、残り時間をオーバーレイで表示します。
 
+ファイルのダウンロード: [リリースページ](https://github.com/GD-fandev/GodiusCrystalBuffTimer/releases/tag/v1.0.0)
+
 検出には少し時間がかかるため、タイマー開始時の表示は通常 598 秒前後になります。
 このツールは非公式のファンメイドツールです。キャラクター操作、クライアント改変、パケット操作は行いません。
 
@@ -27,6 +29,8 @@ Godius EW 用の Crystal Buff タイマーです。
 Godius EW용 Crystal Buff 타이머입니다.
 게임 화면의 얼음의 결정 / 불의 결정 버프 아이콘을 감지하고, 남은 시간을 오버레이로 표시합니다.
 
+파일 다운로드: [릴리스 페이지](https://github.com/GD-fandev/GodiusCrystalBuffTimer/releases/tag/v1.0.0)
+
 감지에 약간의 시간이 걸리기 때문에 타이머 시작 시 표시는 보통 598초 전후입니다.
 이 도구는 비공식 팬 제작 도구입니다. 캐릭터 조작, 클라이언트 수정, 패킷 조작을 하지 않습니다.
 
@@ -48,6 +52,8 @@ Godius EW용 Crystal Buff 타이머입니다.
 
 Godius Crystal Buff Timer is a buff timer overlay for Godius EW.
 It detects the Ice Crystal / Fire Crystal buff icon on the game screen and displays the remaining time as an overlay.
+
+Download files: [Release page](https://github.com/GD-fandev/GodiusCrystalBuffTimer/releases/tag/v1.0.0)
 
 Because detection takes a moment, the timer usually starts at around 598 seconds.
 This is an unofficial fan-made tool. It does not control your character, modify the client, or touch packets.
