@@ -1,4 +1,5 @@
 numpy>=1.26
 Pillow>=10.0
+dxcam>=0.3
+opencv-python>=4.9
 pyinstaller>=6.0
-

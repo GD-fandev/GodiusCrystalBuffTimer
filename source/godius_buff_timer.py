@@ -11,6 +11,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageGrab, ImageTk
 
+try:
+    import dxcam
+except Exception:
+    dxcam = None
+
 
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
@@ -19,7 +24,10 @@ else:
     APP_DIR = Path(__file__).resolve().parent
     RESOURCE_DIR = APP_DIR
 
-ROOT = APP_DIR
+APP_VERSION = "1.1"
+APP_CONFIG_DIR = Path(os.environ.get("APPDATA", APP_DIR)) / "GodiusCrystalBuffTimer"
+APP_CONFIG_PATH = APP_CONFIG_DIR / "config.json"
+LEGACY_CONFIG_PATH = APP_DIR / "config.json"
 
 
 def resource_path(relative_path):
@@ -109,11 +117,30 @@ kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
 
 
 def load_config():
-    external_config = ROOT / "config.json"
     bundled_config = resource_path("config.json")
-    config_path = external_config if external_config.exists() else bundled_config
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(bundled_config, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    appdata_exists = APP_CONFIG_PATH.exists()
+    if appdata_exists:
+        with open(APP_CONFIG_PATH, "r", encoding="utf-8") as f:
+            external = json.load(f)
+        config.update(external)
+
+    legacy_exists = LEGACY_CONFIG_PATH.exists() and LEGACY_CONFIG_PATH != bundled_config
+    if not appdata_exists and legacy_exists:
+        with open(LEGACY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            legacy = json.load(f)
+        config.update(legacy)
+        save_config_file(config)
+    return config
+
+
+def save_config_file(config):
+    APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(APP_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+        f.write("\n")
 
 
 def process_path_from_pid(pid):
@@ -259,6 +286,23 @@ class BuffTimerApp:
         self.absent_template = self.load_plain_template("absent_template_path")
         self.manual_position = False
         self.last_timer_geometry = ""
+        self.capture_backend = "Desktop Duplication"
+        self.desktop_camera = None
+        self.debug_capture_enabled = (
+            os.environ.get("GODIUS_CAPTURE_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+            or bool(config.get("debug_capture_preview", False))
+        )
+        self.debug_capture_window = None
+        self.debug_capture_label = None
+        self.debug_capture_text = None
+        self.debug_capture_image = None
+        if dxcam is not None:
+            try:
+                self.desktop_camera = dxcam.create(output_color="RGB", processor_backend="numpy")
+            except Exception:
+                self.desktop_camera = None
+        if self.desktop_camera is None:
+            self.capture_backend = "ImageGrab fallback"
 
         self.root = tk.Tk()
         self.root.title("Godius Crystal Buff Timer")
@@ -299,6 +343,8 @@ class BuffTimerApp:
         self.apply_timer_geometry(start_x, start_y)
         self.render_no_buff_image()
         self.control_window = self.create_control_window()
+        if self.debug_capture_enabled:
+            self.debug_capture_window = self.create_debug_capture_window()
 
         self.root.bind("<ButtonPress-1>", self.begin_drag)
         self.root.bind("<B1-Motion>", self.drag)
@@ -329,13 +375,41 @@ class BuffTimerApp:
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, exstyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
         return win
 
+    def create_debug_capture_window(self):
+        win = tk.Toplevel(self.root)
+        win.title("Capture Debug")
+        win.attributes("-topmost", True)
+        win.configure(bg="#111111")
+        self.debug_capture_label = tk.Label(win, bg="#111111", bd=0)
+        self.debug_capture_label.pack(padx=8, pady=(8, 4))
+        self.debug_capture_text = tk.Label(
+            win,
+            text="Waiting for capture...",
+            bg="#111111",
+            fg="#ffe066",
+            justify="left",
+            font=("Consolas", 10),
+        )
+        self.debug_capture_text.pack(fill="x", padx=8, pady=(0, 8))
+        win.geometry("280x270+80+80")
+        return win
+
+    def update_debug_status(self, status):
+        if not self.debug_capture_enabled or not self.debug_capture_window or not self.debug_capture_text:
+            return
+        try:
+            self.debug_capture_text.configure(text=status)
+            self.debug_capture_window.update_idletasks()
+        except Exception:
+            pass
+
     def create_control_window(self):
         win = tk.Toplevel(self.root)
         win.title("Crystal Buff Timer")
         win.resizable(False, False)
         win.configure(bg="#eff8fb")
         control_width = 300
-        control_height = 118
+        control_height = 170
         x = int(self.config.get("control_window_x", 40))
         y = int(self.config.get("control_window_y", 40))
         x, y = self.clamp_window_position(x, y, control_width, control_height)
@@ -346,7 +420,7 @@ class BuffTimerApp:
         except Exception:
             self.control_icon_image = None
 
-        shell = tk.Frame(win, bg="#eff8fb", padx=16, pady=14)
+        shell = tk.Frame(win, bg="#eff8fb", padx=16, pady=12)
         shell.pack(fill="both", expand=True)
         header = tk.Frame(shell, bg="#eff8fb")
         header.pack(fill="x")
@@ -377,7 +451,15 @@ class BuffTimerApp:
             font=("Segoe UI", 10, "bold"),
             cursor="hand2",
         )
-        quit_button.pack(fill="x", pady=(16, 0))
+        quit_button.pack(fill="x", pady=(14, 0))
+        tk.Label(
+            shell,
+            text=f"Version {APP_VERSION}",
+            fg="#5d7680",
+            bg="#eff8fb",
+            font=("Segoe UI", 8),
+            anchor="center",
+        ).pack(fill="x", pady=(8, 0))
         win.protocol("WM_DELETE_WINDOW", self.quit_app)
         return win
 
@@ -412,6 +494,11 @@ class BuffTimerApp:
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, exstyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
 
     def quit_app(self):
+        if self.desktop_camera is not None:
+            try:
+                self.desktop_camera.release()
+            except Exception:
+                pass
         self.save_control_window_position()
         self.save_config()
         self.root.destroy()
@@ -677,9 +764,7 @@ class BuffTimerApp:
             self.update_region_window()
 
     def save_config(self):
-        with open(ROOT / "config.json", "w", encoding="utf-8") as f:
-            json.dump(self.config, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+        save_config_file(self.config)
 
     def calibrate_region_at_screen_point(self, screen_x, screen_y):
 
@@ -794,6 +879,7 @@ class BuffTimerApp:
                 "icon_path": icon_path,
                 "icon_cache": {},
             })
+        self.apply_discriminative_masks(loaded)
         return loaded
 
     def create_detect_mask(self, template):
@@ -806,6 +892,40 @@ class BuffTimerApp:
         if np.count_nonzero(mask) < 20:
             mask = luma > np.percentile(luma, 70)
         return Image.fromarray((mask.astype(np.uint8) * 255), mode="L")
+
+    def create_center_mask(self, size):
+        width, height = size
+        ratio = max(0.1, min(0.5, float(self.config.get("detect_center_mask_ratio", 0.42))))
+        radius = min(width, height) * ratio
+        center_x = (width - 1) / 2.0
+        center_y = (height - 1) / 2.0
+        y, x = np.ogrid[:height, :width]
+        mask = ((x - center_x) ** 2) + ((y - center_y) ** 2) <= radius ** 2
+        return mask
+
+    def apply_discriminative_masks(self, buffs):
+        if len(buffs) < 2:
+            return
+        diff_threshold = max(0.0, float(self.config.get("detect_discriminative_diff", 35)))
+        min_pixels = max(1, int(self.config.get("detect_min_mask_pixels", 80)))
+        for buff in buffs:
+            template = buff["template"]
+            template_arr = np.asarray(template, dtype=np.float32)
+            max_diff = np.zeros(template_arr.shape[:2], dtype=np.float32)
+            for other in buffs:
+                if other is buff:
+                    continue
+                other_template = other["template"]
+                if other_template.size != template.size:
+                    other_template = other_template.resize(template.size, Image.Resampling.LANCZOS)
+                other_arr = np.asarray(other_template, dtype=np.float32)
+                diff = np.mean(np.abs(template_arr - other_arr), axis=2)
+                max_diff = np.maximum(max_diff, diff)
+            base_mask = np.asarray(buff["mask"], dtype=bool)
+            center_mask = self.create_center_mask(template.size)
+            discriminative_mask = base_mask & center_mask & (max_diff >= diff_threshold)
+            if np.count_nonzero(discriminative_mask) >= min_pixels:
+                buff["mask"] = Image.fromarray((discriminative_mask.astype(np.uint8) * 255), mode="L")
 
     def buff_by_key(self, buff_key):
         for buff in self.buffs:
@@ -835,16 +955,71 @@ class BuffTimerApp:
             return None
         return Image.open(path).convert("RGB")
 
+    def capture_client_frame(self, client_rect):
+        if self.desktop_camera is not None:
+            array = self.desktop_camera.grab(
+                region=tuple(int(value) for value in client_rect),
+                new_frame_only=False,
+            )
+            if array is None:
+                return None
+            return Image.fromarray(array, mode="RGB")
+        return ImageGrab.grab(bbox=client_rect).convert("RGB")
+
+    def crop_bbox_from_client_frame(self, client_frame, client_rect, bbox):
+        client_left, client_top, _client_right, _client_bottom = client_rect
+        left = max(0, round(bbox[0] - client_left))
+        top = max(0, round(bbox[1] - client_top))
+        right = min(client_frame.width, round(bbox[2] - client_left))
+        bottom = min(client_frame.height, round(bbox[3] - client_top))
+        if right <= left or bottom <= top:
+            return None
+        return client_frame.crop((left, top, right, bottom))
+
+    def capture_detection_bbox(self, bbox):
+        client_rect = get_client_screen_rect(self.target_hwnd)
+        if client_rect:
+            client_left, client_top, client_right, client_bottom = client_rect
+            bbox_inside_client = (
+                bbox[0] >= client_left
+                and bbox[1] >= client_top
+                and bbox[2] <= client_right
+                and bbox[3] <= client_bottom
+            )
+            if bbox_inside_client:
+                client_frame = self.capture_client_frame(client_rect)
+                if client_frame is None:
+                    return None
+                return self.crop_bbox_from_client_frame(client_frame, client_rect, bbox)
+        return ImageGrab.grab(bbox=bbox).convert("RGB")
+
+    def update_debug_capture_preview(self, capture, bbox, status):
+        if not self.debug_capture_enabled or not self.debug_capture_window:
+            return
+        try:
+            scale = max(1, int(self.config.get("debug_capture_scale", 4)))
+            preview = capture.resize((capture.width * scale, capture.height * scale), Image.Resampling.NEAREST)
+            self.debug_capture_image = ImageTk.PhotoImage(preview)
+            self.debug_capture_label.configure(image=self.debug_capture_image)
+            bbox_text = f"bbox: {bbox[0]},{bbox[1]} - {bbox[2]},{bbox[3]}"
+            self.debug_capture_text.configure(text=f"{self.capture_backend}\n{bbox_text}\n{status}")
+            self.debug_capture_window.update_idletasks()
+        except Exception:
+            pass
+
     def detect_buff_present(self):
         if not self.buffs or not self.target_hwnd:
+            self.update_debug_status("No buffs loaded or target window missing")
             return None
         region = self.config.get("detect_region")
         if not region or len(region) != 4:
+            self.update_debug_status("detect_region is missing")
             return None
         origin = str(self.config.get("detect_coordinate_origin", "client")).lower()
         base_rect = get_detection_base_rect(self.target_hwnd, origin)
         if not base_rect:
             self.target_hwnd = None
+            self.update_debug_status(f"Cannot get target rect\norigin: {origin}")
             return None
 
         base_left, base_top, base_right, base_bottom = base_rect
@@ -863,44 +1038,76 @@ class BuffTimerApp:
             bottom = round(bottom * scale_y)
         bbox = (base_left + left, base_top + top, base_left + right, base_top + bottom)
         if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            self.update_debug_status(f"Invalid bbox: {bbox}")
             return None
         self.last_capture_bbox = bbox
 
+        hide_overlay = self.config.get("hide_overlay_during_capture", False)
         try:
             if self.region_window:
                 self.region_window.withdraw()
                 self.region_window.update_idletasks()
-            if self.config.get("hide_overlay_during_capture", False):
+            if hide_overlay:
                 self.root.withdraw()
                 self.text_window.withdraw()
                 self.root.update_idletasks()
                 time.sleep(0.03)
-            capture = ImageGrab.grab(bbox=bbox).convert("RGB")
-            if self.config.get("hide_overlay_during_capture", False):
-                self.root.deiconify()
-                self.text_window.deiconify()
-        except OSError:
-            if self.config.get("hide_overlay_during_capture", False):
-                self.root.deiconify()
-                self.text_window.deiconify()
+            capture = self.capture_detection_bbox(bbox)
+        except Exception as exc:
+            self.update_debug_status(f"Capture exception\n{type(exc).__name__}: {exc}")
             return None
+        finally:
+            if hide_overlay:
+                self.root.deiconify()
+                self.text_window.deiconify()
+        if capture is None:
+            self.update_debug_status(f"Capture returned None\nbbox: {bbox}")
+            return None
+        self.update_debug_capture_preview(capture, bbox, "captured")
 
         if self.absent_template:
             self.last_absent_score = self.score_by_pixel_difference(capture, self.absent_template)
             absent_threshold = float(self.config.get("absent_threshold", 0.82))
             if self.last_absent_score >= absent_threshold:
+                self.update_debug_capture_preview(
+                    capture,
+                    bbox,
+                    f"absent: {self.last_absent_score:.3f} >= {absent_threshold:.3f}",
+                )
                 return None
 
         threshold = float(self.config.get("detect_threshold", 0.62))
+        min_score_gap = max(0.0, float(self.config.get("detect_min_score_gap", 0.0)))
+        color_anchor_weight = max(0.0, min(1.0, float(self.config.get("detect_color_anchor_weight", 0.0))))
         best_key = None
-        best_score = threshold
+        best_score = 0.0
+        scores = []
+        score_lines = []
         for buff in self.buffs:
             template = buff["template"]
             mask = buff["mask"]
-            detect_score = self.score_template(capture, template, mask)
-            if detect_score >= best_score:
+            template_score = self.score_template(capture, template, mask)
+            color_score = self.score_color_anchor(capture, buff["key"])
+            detect_score = (template_score * (1.0 - color_anchor_weight)) + (color_score * color_anchor_weight)
+            scores.append((buff["key"], detect_score))
+            score_lines.append(f"{buff['key']}: {detect_score:.3f} c{color_score:.2f}")
+            if detect_score > best_score:
                 best_key = buff["key"]
                 best_score = detect_score
+        ranked_scores = sorted((score for _key, score in scores), reverse=True)
+        second_score = ranked_scores[1] if len(ranked_scores) > 1 else 0.0
+        score_gap = best_score - second_score
+        if best_score < threshold or (len(self.buffs) > 1 and score_gap < min_score_gap):
+            best_key = None
+        absent_text = "absent: n/a"
+        if self.last_absent_score is not None:
+            absent_text = f"absent: {self.last_absent_score:.3f}"
+        result_text = best_key if best_key else "none"
+        self.update_debug_capture_preview(
+            capture,
+            bbox,
+            f"{absent_text}\n{', '.join(score_lines)}\ngap: {score_gap:.3f}\nresult: {result_text}",
+        )
         return best_key
 
     def score_template(self, capture, template, mask):
@@ -928,7 +1135,54 @@ class BuffTimerApp:
         else:
             correlation = float(np.mean(((cap - np.mean(cap)) / cap_std) * ((tmpl - np.mean(tmpl)) / tmpl_std)))
             correlation = (correlation + 1.0) / 2.0
-        return (correlation * 0.45) + (pixel_similarity * 0.55)
+        rgb_score = (correlation * 0.45) + (pixel_similarity * 0.55)
+
+        chroma_weight = max(0.0, min(1.0, float(self.config.get("detect_chroma_weight", 0.0))))
+        if chroma_weight <= 0.0:
+            return rgb_score
+        cap_chroma = cap_rgb / (np.sum(cap_rgb, axis=1, keepdims=True) + 1e-6)
+        tmpl_chroma = tmpl_rgb / (np.sum(tmpl_rgb, axis=1, keepdims=True) + 1e-6)
+        chroma_score = float(1.0 - (np.mean(np.abs(cap_chroma - tmpl_chroma)) / (2.0 / 3.0)))
+        chroma_score = max(0.0, min(1.0, chroma_score))
+        return (rgb_score * (1.0 - chroma_weight)) + (chroma_score * chroma_weight)
+
+    def score_color_anchor(self, capture, buff_key):
+        arr = np.asarray(capture, dtype=np.float32)
+        center_mask = self.create_center_mask(capture.size)
+        r = arr[:, :, 0]
+        g = arr[:, :, 1]
+        b = arr[:, :, 2]
+        max_channel = np.max(arr, axis=2)
+        min_channel = np.min(arr, axis=2)
+        saturation = (max_channel - min_channel) / (max_channel + 1e-6)
+        luma = (0.299 * r) + (0.587 * g) + (0.114 * b)
+        lit_center = center_mask & (luma > 55)
+        lit_pixels = int(np.count_nonzero(lit_center))
+        if lit_pixels < 20:
+            return 0.5
+
+        warm_pixels = lit_center & (saturation > 0.12) & (r > g + 8) & (g > b + 5) & (r > b + 30)
+        red_pixels = lit_center & (saturation > 0.12) & (r > g + 5) & (r > b + 35)
+        cool_pixels = lit_center & (saturation > 0.08) & (g > r + 5) & (b > r + 5)
+
+        warm_ratio = np.count_nonzero(warm_pixels) / lit_pixels
+        red_ratio = np.count_nonzero(red_pixels) / lit_pixels
+        cool_ratio = np.count_nonzero(cool_pixels) / lit_pixels
+
+        def ramp(value, low, high):
+            if high <= low:
+                return 0.0
+            return max(0.0, min(1.0, (value - low) / (high - low)))
+
+        key = str(buff_key).lower()
+        if "fire" in key:
+            return max(ramp(warm_ratio, 0.45, 0.80), ramp(red_ratio, 0.35, 0.75))
+        if "ice" in key:
+            cool_score = ramp(cool_ratio, 0.12, 0.30)
+            red_penalty = 1.0 - ramp(red_ratio, 0.25, 0.55)
+            warm_penalty = 1.0 - ramp(warm_ratio, 0.35, 0.70)
+            return max(0.0, min(1.0, (cool_score * 0.70) + (red_penalty * 0.20) + (warm_penalty * 0.10)))
+        return 0.5
 
     def score_by_pixel_difference(self, capture, template):
         if template.size != capture.size:
@@ -957,10 +1211,15 @@ class BuffTimerApp:
 
     def handle_auto_detect(self):
         if not self.config.get("auto_detect", False):
+            self.update_debug_status("auto_detect is disabled")
             return
         if self.calibration_mode:
+            self.update_debug_status("calibration mode is active")
             return
         if not self.is_target_foreground():
+            fg = user32.GetForegroundWindow()
+            name, _pid = process_name_for_hwnd(fg) if fg else ("", 0)
+            self.update_debug_status(f"Waiting for foreground\nforeground: {name or 'unknown'}")
             return
         now = time.monotonic()
         interval = max(0.1, float(self.config.get("detect_interval_ms", 350)) / 1000.0)

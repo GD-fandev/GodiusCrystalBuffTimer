@@ -39,6 +39,12 @@
     1264
   ],
   "detect_threshold": 0.7,
+  "detect_min_score_gap": 0.06,
+  "detect_discriminative_diff": 35,
+  "detect_min_mask_pixels": 80,
+  "detect_chroma_weight": 0.65,
+  "detect_center_mask_ratio": 0.42,
+  "detect_color_anchor_weight": 0.45,
   "absent_threshold": 0.93,
   "detect_required_hits": 4,
   "absent_required_hits": 6,
